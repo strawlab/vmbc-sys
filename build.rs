@@ -3,7 +3,7 @@ fn main() {
         Some(dir) => std::path::PathBuf::from(dir),
         #[cfg(target_os = "windows")]
         None => std::path::PathBuf::from(
-            r#"C:\Program Files\Allied Vision\Vimba_5.1\VimbaC\Lib\Win64\"#,
+            r#"C:\Program Files\Allied Vision\Vimba_6.0\VimbaC\Lib\Win64\"#,
         ),
         #[cfg(not(target_os = "windows"))]
         None => {
