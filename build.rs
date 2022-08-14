@@ -13,4 +13,5 @@ fn main() {
 
     println!("cargo:rustc-link-search=native={}", libdir.display());
     println!("cargo:rustc-link-lib=VimbaC");
+    println!("cargo:rerun-if-env-changed=VIMBAC_LIBDIR");
 }
