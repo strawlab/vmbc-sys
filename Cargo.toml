@@ -2,7 +2,7 @@
 name = "vimba-sys"
 description = "Rust wrapper of the Vimba library for Allied Vision cameras"
 license = "MIT OR Apache-2.0"
-version = "0.1.2"
+version = "0.2.0-alpha.1"
 authors = ["Andrew Straw <strawman@astraw.com>"]
 edition = "2021"
 rust-version = "1.56"
@@ -11,6 +11,7 @@ keywords = ["allied-vision", "camera", "bindings", "vimba", "image"]
 categories = ["api-bindings", "external-ffi-bindings", "hardware-support", "multimedia::images"]
 
 [dependencies]
+libloading = "0.7.3"
 
 [dev-dependencies]
 anyhow = "1"

@@ -1,7 +1,8 @@
 #!/bin/bash
 set -o errexit
 
-bindgen /usr/local/vimba-5.0/include/VimbaC.h \
+bindgen /opt/vimba/Vimba_6_0/VimbaC/Include/VimbaC.h \
+    --dynamic-loading VimbaC \
     --default-enum-style moduleconsts \
     --bitfield-enum VmbFeatureFlagsType --bitfield-enum VmbFrameFlagsType \
     --with-derive-partialeq \
