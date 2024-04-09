@@ -1,5 +1,5 @@
-use vimba_sys::{
-    VmbAccessModeType, VmbCameraInfo_t, VmbErrorType, VmbFrameStatusType, VmbFrame_t, VmbHandle_t,
+use vmbc_sys::{
+    VmbAccessModeType, VmbCameraInfo_t, VmbErrorType, VmbFrameStatusType, VmbFrame_t,
     VmbVersionInfo_t,
 };
 
@@ -48,14 +48,14 @@ macro_rules! vimba_call {
 
 /// Automatically shutdown Vimba when library reference goes out of scope.
 struct VimbaLib {
-    lib: vimba_sys::VimbaC,
+    lib: vmbc_sys::VimbaC,
     started: bool,
 }
 
 impl VimbaLib {
-    fn new(lib: vimba_sys::VimbaC) -> anyhow::Result<Self> {
+    fn new(lib: vmbc_sys::VimbaC) -> anyhow::Result<Self> {
         // start vimba
-        vimba_call!(lib.VmbStartup())?;
+        vimba_call!(lib.VmbStartup(std::ptr::null()))?;
         Ok(Self { lib, started: true })
     }
 }
@@ -71,18 +71,16 @@ impl Drop for VimbaLib {
 }
 
 fn main() -> anyhow::Result<()> {
-    let vimba_handle: VmbHandle_t = 1 as _;
+    #[cfg(target_os = "linux")]
+    let vmbc_path = "/opt/VimbaX_2023-4/api/lib/libVmbC.so";
 
-    #[cfg(target_os = "windows")]
-    let vimbac_path = r#"C:\Program Files\Allied Vision\Vimba_6.0\VimbaC\Lib\Win64\VimbaC.dll"#;
+    #[cfg(target_os = "macos")]
+    let vmbc_path = "/Library/Frameworks/VmbC.framework/Versions/A/VmbC";
 
-    #[cfg(not(target_os = "windows"))]
-    let vimbac_path = "/opt/vimba/Vimba_6_0/VimbaC/DynamicLib/x86_64bit/libVimbaC.so";
-
-    let vimba_lib = unsafe { vimba_sys::VimbaC::new(vimbac_path) }?;
+    let vmbc_lib = unsafe { vmbc_sys::VimbaC::new(vmbc_path) }?;
 
     // start vimba
-    let vmb = VimbaLib::new(vimba_lib)?;
+    let vmbc = VimbaLib::new(vmbc_lib)?;
 
     // print version
     let mut version_info = VmbVersionInfo_t {
@@ -90,7 +88,7 @@ fn main() -> anyhow::Result<()> {
         minor: 0,
         patch: 0,
     };
-    vimba_call!(vmb.lib.VmbVersionQuery(
+    vimba_call!(vmbc.lib.VmbVersionQuery(
         &mut version_info,
         std::mem::size_of::<VmbVersionInfo_t>() as u32
     ))?;
@@ -98,17 +96,10 @@ fn main() -> anyhow::Result<()> {
         "Vimba API Version: {}.{}.{}",
         version_info.major, version_info.minor, version_info.patch
     );
-    // check if GigE is available
-    let mut is_gige_avail = 0;
-    let data = std::ffi::CString::new("GeVTLIsPresent")?;
-    vimba_call!(vmb
-        .lib
-        .VmbFeatureBoolGet(vimba_handle, data.as_ptr(), &mut is_gige_avail))?;
-    println!("GigE is available: {}", is_gige_avail);
 
     // get camera list
     let mut n_count = 0;
-    vimba_call!(vmb
+    vimba_call!(vmbc
         .lib
         .VmbCamerasList(std::ptr::null_mut(), 0, &mut n_count, 0))?;
     println!("{} cameras found", n_count);
@@ -116,17 +107,22 @@ fn main() -> anyhow::Result<()> {
     let mut cameras: Vec<VmbCameraInfo_t> = vec![
         VmbCameraInfo_t {
             cameraIdString: std::ptr::null_mut(),
+            cameraIdExtended: std::ptr::null_mut(),
             cameraName: std::ptr::null_mut(),
             modelName: std::ptr::null_mut(),
             serialString: std::ptr::null_mut(),
+            transportLayerHandle: std::ptr::null_mut(),
+            interfaceHandle: std::ptr::null_mut(),
+            localDeviceHandle: std::ptr::null_mut(),
+            streamHandles: std::ptr::null_mut(),
+            streamCount: 0,
             permittedAccess: 0,
-            interfaceIdString: std::ptr::null_mut(),
         };
         n_count as usize
     ];
 
     let mut n_found_count = 0;
-    vimba_call!(vmb.lib.VmbCamerasList(
+    vimba_call!(vmbc.lib.VmbCamerasList(
         cameras[..].as_mut_ptr(),
         n_count,
         &mut n_found_count,
@@ -140,6 +136,9 @@ fn main() -> anyhow::Result<()> {
         println!("  cameraIdString: {}", unsafe {
             std::ffi::CStr::from_ptr(cameras[i].cameraIdString).to_str()
         }?);
+        println!("  cameraIdExtended: {}", unsafe {
+            std::ffi::CStr::from_ptr(cameras[i].cameraIdExtended).to_str()
+        }?);
         println!("  cameraName: {}", unsafe {
             std::ffi::CStr::from_ptr(cameras[i].cameraName).to_str()
         }?);
@@ -150,9 +149,7 @@ fn main() -> anyhow::Result<()> {
             std::ffi::CStr::from_ptr(cameras[i].serialString).to_str()
         }?);
         println!("  permittedAccess: {}", cameras[i].permittedAccess);
-        println!("  interfaceIdString: {}", unsafe {
-            std::ffi::CStr::from_ptr(cameras[i].interfaceIdString).to_str()
-        }?);
+        println!("  streamCount: {}", cameras[i].streamCount);
     }
 
     let mut camera_handle = std::ptr::null_mut(); // VmbHandle_t         cameraHandle        = NULL;
@@ -160,7 +157,7 @@ fn main() -> anyhow::Result<()> {
 
     if cameras.len() > 0 {
         println!("Opening camera 0...");
-        vimba_call!(vmb.lib.VmbCameraOpen(
+        vimba_call!(vmbc.lib.VmbCameraOpen(
             cameras[0].cameraIdString,
             camera_access_mode as u32, // API bug? Should not require cast.
             &mut camera_handle,
@@ -173,7 +170,7 @@ fn main() -> anyhow::Result<()> {
             let buf_ptr = (&mut buf[..]).as_mut_ptr() as *mut i8;
             let mut filled: u32 = 0;
             let data = std::ffi::CString::new("DeviceFirmwareVersion")?;
-            vimba_call!(vmb.lib.VmbFeatureStringGet(
+            vimba_call!(vmbc.lib.VmbFeatureStringGet(
                 camera_handle,
                 data.as_ptr(),
                 buf_ptr,
@@ -189,7 +186,7 @@ fn main() -> anyhow::Result<()> {
             // Get the pixel format
             let mut pixel_format: *const std::os::raw::c_char = std::ptr::null();
             let data = std::ffi::CString::new("PixelFormat")?;
-            vimba_call!(vmb.lib.VmbFeatureEnumGet(
+            vimba_call!(vmbc.lib.VmbFeatureEnumGet(
                 camera_handle,
                 data.as_ptr(),
                 &mut pixel_format
@@ -216,7 +213,7 @@ fn main() -> anyhow::Result<()> {
         // Get the payload size
         let mut payload_size = 0;
         let data = std::ffi::CString::new("PayloadSize")?;
-        vimba_call!(vmb
+        vimba_call!(vmbc
             .lib
             .VmbFeatureIntGet(camera_handle, data.as_ptr(), &mut payload_size,))?;
         println!("PayloadSize: {}", payload_size);
@@ -232,23 +229,23 @@ fn main() -> anyhow::Result<()> {
             (*frame.as_mut_ptr()).bufferSize = payload.len().try_into().unwrap();
         }
 
-        vimba_call!(vmb.lib.VmbFrameAnnounce(
+        vimba_call!(vmbc.lib.VmbFrameAnnounce(
             camera_handle,
             frame.as_mut_ptr(),
             std::mem::size_of::<VmbFrame_t>().try_into().unwrap()
         ))?;
 
-        vimba_call!(vmb.lib.VmbCaptureStart(camera_handle))?;
+        vimba_call!(vmbc.lib.VmbCaptureStart(camera_handle))?;
 
-        vimba_call!(vmb
+        vimba_call!(vmbc
             .lib
             .VmbCaptureFrameQueue(camera_handle, frame.as_mut_ptr(), None))?;
 
         let data = std::ffi::CString::new("AcquisitionStart")?;
-        vimba_call!(vmb.lib.VmbFeatureCommandRun(camera_handle, data.as_ptr(),))?;
+        vimba_call!(vmbc.lib.VmbFeatureCommandRun(camera_handle, data.as_ptr(),))?;
 
         let n_timeout = 2000;
-        vimba_call!(vmb
+        vimba_call!(vmbc
             .lib
             .VmbCaptureFrameWait(camera_handle, frame.as_mut_ptr(), n_timeout))?;
 
@@ -256,7 +253,7 @@ fn main() -> anyhow::Result<()> {
 
         if frame.receiveStatus == VmbFrameStatusType::VmbFrameStatusComplete {
             println!("frame complete");
-            println!("imageSize {}", frame.imageSize);
+            println!("bufferSize {}", frame.bufferSize);
             println!("{}x{}", frame.width, frame.height);
         } else {
             println!("frame not complete. status: {}", frame.receiveStatus);
