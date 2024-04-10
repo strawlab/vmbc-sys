@@ -2,7 +2,7 @@
 name = "vmbc-sys"
 description = "Rust wrapper of the Vimba X library for Allied Vision cameras"
 license = "MIT OR Apache-2.0"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Andrew Straw <strawman@astraw.com>"]
 edition = "2021"
 rust-version = "1.56"
