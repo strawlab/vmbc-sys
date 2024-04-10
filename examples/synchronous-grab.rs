@@ -1,3 +1,4 @@
+use anyhow::Context;
 use vmbc_sys::{
     VmbAccessModeType, VmbCameraInfo_t, VmbErrorType, VmbFrameStatusType, VmbFrame_t,
     VmbVersionInfo_t,
@@ -71,13 +72,23 @@ impl Drop for VimbaLib {
 }
 
 fn main() -> anyhow::Result<()> {
+    #[cfg(target_os = "windows")]
+    let vmbc_path = {
+        // Tell Windows to add this directory to DLL search path.
+        let dll_path = windows::core::s!(r#"C:\Program Files\Allied Vision\Vimba X\bin"#);
+        unsafe { windows::Win32::System::LibraryLoader::SetDllDirectoryA(dll_path) }?;
+        // Now we directly open this DLL, which should now be on the search path.
+        "VmbC.dll"
+    };
+
     #[cfg(target_os = "linux")]
     let vmbc_path = "/opt/VimbaX_2023-4/api/lib/libVmbC.so";
 
     #[cfg(target_os = "macos")]
     let vmbc_path = "/Library/Frameworks/VmbC.framework/Versions/A/VmbC";
 
-    let vmbc_lib = unsafe { vmbc_sys::VimbaC::new(vmbc_path) }?;
+    let vmbc_lib = unsafe { vmbc_sys::VimbaC::new(vmbc_path) }
+        .with_context(|| format!("Failed loading Vimba X library from path \"{vmbc_path}\"."))?;
 
     // start vimba
     let vmbc = VimbaLib::new(vmbc_lib)?;
